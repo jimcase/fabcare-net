@@ -266,6 +266,34 @@ func (s *SmartContract) GetMask(ctx contractapi.TransactionContextInterface, mas
 	return mask, nil
 }
 
+func (s *SmartContract) GetMasksByState(ctx contractapi.TransactionContextInterface, state string) ([]*Mask, error) {
+
+	queryString := fmt.Sprintf(`{"selector":{"state":"%s"}}`, state)
+
+	resultsIterator, err := ctx.GetStub().GetQueryResult(queryString)
+	if err != nil {
+		return nil, err
+	}
+
+	defer resultsIterator.Close()
+
+	var report []*Mask
+	for resultsIterator.HasNext() {
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return nil, err
+		}
+		var userBalance Mask
+		err = json.Unmarshal(queryResult.Value, &userBalance)
+		if err != nil {
+			return nil, err
+		}
+		report = append(report, &userBalance)
+	}
+
+	return report, nil
+}
+
 func (s *SmartContract) DeleteMask(ctx contractapi.TransactionContextInterface, maskId string) error {
 
 	exists, err := s.MaskExists(ctx, maskId)
