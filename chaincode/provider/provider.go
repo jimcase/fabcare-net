@@ -100,6 +100,54 @@ func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface,
 }
 
 // Create a new mask
+func (s *SmartContract) UpdateMask3(ctx contractapi.TransactionContextInterface,
+	maskId string,
+	typeM string,
+	madeBy string,
+	owner string,
+	code string,
+	state string,
+	price float32) (bool, error) {
+
+	// validate parameters if we dont want to update
+
+	exists, err := s.MaskExists(ctx, maskId)
+
+	if err != nil {
+		return false, err
+	}
+
+	if exists {
+		maskBytes, err := ctx.GetStub().GetState(maskId)
+
+		mask := new(Mask)
+		err = json.Unmarshal(maskBytes, mask)
+		if err != nil {
+			return false, fmt.Errorf("Unmarshal error. %s", err.Error())
+		}
+
+		mask2 := Mask{
+			Type:   mask.Type,
+			Code:   mask.Code,
+			Madeby: mask.Madeby,
+			Owner:  owner,
+			State:  "Sold",
+			Price:  mask.Price,
+		}
+
+		maskAsBytes, err := json.Marshal(mask2)
+		if err != nil {
+			fmt.Printf("Marshal error: %s", err.Error())
+			return false, err
+		}
+		ctx.GetStub().PutState(maskId, maskAsBytes)
+		return true, nil
+	} else {
+		return false, fmt.Errorf("The mask %s  does not exist", maskId)
+	}
+}
+
+// Create a new mask
 func (s *SmartContract) UpdateMask(ctx contractapi.TransactionContextInterface,
 	maskId string,
 	typeM string,
