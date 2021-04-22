@@ -26,7 +26,7 @@ type Mask struct {
 
 // From Laurent question
 type MaskTx struct {
-	Code      string    `json:"code"`
+	CodeId    string    `json:"codeId"`
 	TxId      string    `json:"tx"`
 	PrevOwner string    `json:"prevOwner"`
 	NewOwner  string    `json:"newOwner"`
@@ -99,8 +99,8 @@ func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface,
 	}
 }
 
-// Create a new mask
-func (s *SmartContract) SendMask2(ctx contractapi.TransactionContextInterface,
+// Send a mask, change owner
+func (s *SmartContract) SendMask(ctx contractapi.TransactionContextInterface,
 	maskId string,
 	owner string) (bool, error) {
 
@@ -140,7 +140,7 @@ func (s *SmartContract) SendMask2(ctx contractapi.TransactionContextInterface,
 		txid := ctx.GetStub().GetTxID()
 
 		maskTx := MaskTx{
-			Code:      mask.Code,
+			CodeId:    mask.Code,
 			TxId:      txid,
 			PrevOwner: mask.Owner,
 			NewOwner:  owner,
@@ -162,50 +162,7 @@ func (s *SmartContract) SendMask2(ctx contractapi.TransactionContextInterface,
 	}
 }
 
-// Create a new mask
-func (s *SmartContract) SendMask(ctx contractapi.TransactionContextInterface,
-	maskId string,
-	owner string) (bool, error) {
-
-	// validate parameters if we dont want to update
-
-	exists, err := s.MaskExists(ctx, maskId)
-
-	if err != nil {
-		return false, err
-	}
-
-	if exists {
-		maskBytes, err := ctx.GetStub().GetState(maskId)
-
-		mask := new(Mask)
-		err = json.Unmarshal(maskBytes, mask)
-		if err != nil {
-			return false, fmt.Errorf("Unmarshal error. %s", err.Error())
-		}
-
-		mask2 := Mask{
-			Type:   mask.Type,
-			Code:   mask.Code,
-			Madeby: mask.Madeby,
-			Owner:  owner,
-			State:  "Sold",
-			Price:  mask.Price,
-		}
-
-		maskAsBytes, err := json.Marshal(mask2)
-		if err != nil {
-			fmt.Printf("Marshal error: %s", err.Error())
-			return false, err
-		}
-		ctx.GetStub().PutState(maskId, maskAsBytes)
-		return true, nil
-	} else {
-		return false, fmt.Errorf("The mask %s  does not exist", maskId)
-	}
-}
-
-// Create a new mask
+// Update a mask
 func (s *SmartContract) UpdateMask(ctx contractapi.TransactionContextInterface,
 	maskId string,
 	typeM string,
@@ -266,32 +223,66 @@ func (s *SmartContract) GetMask(ctx contractapi.TransactionContextInterface, mas
 	return mask, nil
 }
 
-func (s *SmartContract) GetMasksByState(ctx contractapi.TransactionContextInterface, state string) ([]*Mask, error) {
+func (s *SmartContract) GetMasksByState(ctx contractapi.TransactionContextInterface, state string) (int, []*Mask, error) {
 
 	queryString := fmt.Sprintf(`{"selector":{"state":"%s"}}`, state)
 
 	resultsIterator, err := ctx.GetStub().GetQueryResult(queryString)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 
 	defer resultsIterator.Close()
 
-	var report []*Mask
+	var maskArray []*Mask
+	var counter int
+	counter = 0
 	for resultsIterator.HasNext() {
 		queryResult, err := resultsIterator.Next()
 		if err != nil {
-			return nil, err
+			return 0, nil, err
 		}
-		var userBalance Mask
-		err = json.Unmarshal(queryResult.Value, &userBalance)
+		var m Mask
+		err = json.Unmarshal(queryResult.Value, &m)
 		if err != nil {
-			return nil, err
+			return 0, nil, err
 		}
-		report = append(report, &userBalance)
+		maskArray = append(maskArray, &m)
+		counter = counter + 1
 	}
 
-	return report, nil
+	return counter, maskArray, nil
+}
+
+func (s *SmartContract) GetMasksTxByCode(ctx contractapi.TransactionContextInterface, code string) (int, []*Mask, error) {
+
+	queryString := fmt.Sprintf(`{"selector":{"codeId":"%s"}}`, code)
+
+	resultsIterator, err := ctx.GetStub().GetQueryResult(queryString)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	defer resultsIterator.Close()
+
+	var maskArray []*Mask
+	var counter int
+	counter = 0
+	for resultsIterator.HasNext() {
+		queryResult, err := resultsIterator.Next()
+		if err != nil {
+			return 0, nil, err
+		}
+		var m Mask
+		err = json.Unmarshal(queryResult.Value, &m)
+		if err != nil {
+			return 0, nil, err
+		}
+		maskArray = append(maskArray, &m)
+		counter = counter + 1
+	}
+
+	return counter, maskArray, nil
 }
 
 func (s *SmartContract) DeleteMask(ctx contractapi.TransactionContextInterface, maskId string) error {
@@ -341,7 +332,7 @@ func (s *SmartContract) ChangeMaskOwner(ctx contractapi.TransactionContextInterf
 	txid := ctx.GetStub().GetTxID()
 
 	maskTx := MaskTx{
-		Code:      mask.Code,
+		CodeId:    mask.Code,
 		TxId:      txid,
 		PrevOwner: mask.Owner,
 		NewOwner:  newOwner,
