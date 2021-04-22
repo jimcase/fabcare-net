@@ -100,14 +100,9 @@ func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface,
 }
 
 // Create a new mask
-func (s *SmartContract) UpdateMask3(ctx contractapi.TransactionContextInterface,
+func (s *SmartContract) SendMask(ctx contractapi.TransactionContextInterface,
 	maskId string,
-	typeM string,
-	madeBy string,
-	owner string,
-	code string,
-	state string,
-	price float32) (bool, error) {
+	owner string) (bool, error) {
 
 	// validate parameters if we dont want to update
 
