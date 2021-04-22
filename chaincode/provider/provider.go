@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
@@ -15,41 +16,59 @@ type SmartContract struct {
 
 //Mask describes basic details
 type Mask struct {
-	Type   string `json:"type"`
-	Code   string `json:"code"`
-	Madeby string `json:"madeby"`
-	Owner  string `json:"owner"`
+	Type   string  `json:"type"`
+	Code   string  `json:"code"`
+	Madeby string  `json:"madeby"`
+	Owner  string  `json:"owner"`
+	State  string  `json:"state"`
+	Price  float32 `json:"price"`
 }
 
 // From Laurent question
 type MaskTx struct {
+	Code      string    `json:"code"`
 	TxId      string    `json:"tx"`
 	PrevOwner string    `json:"prevOwner"`
 	NewOwner  string    `json:"newOwner"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
+// InitLedger adds a base set of cars to the ledger
 func (s *SmartContract) InitLedger(ctx contractapi.TransactionContextInterface) error {
+	masks := []Mask{
+		Mask{Type: "FP2", Code: "id:0:AX90", Madeby: "Spain", Owner: "Provider-A", State: "Available", Price: 1.2},
+		Mask{Type: "FP1", Code: "id:0:AX91", Madeby: "Spain", Owner: "Provider-A", State: "Available", Price: 1.2},
+		Mask{Type: "FP2", Code: "id:0:AX92", Madeby: "Spain", Owner: "Provider-A", State: "Available", Price: 1.2},
+		Mask{Type: "FP1", Code: "id:0:AX93", Madeby: "Spain", Owner: "Provider-A", State: "Available", Price: 1.2},
+		Mask{Type: "FP2", Code: "id:1:AX94", Madeby: "India", Owner: "Provider-B", State: "Available", Price: 1.1},
+		Mask{Type: "FP1", Code: "id:1:AX95", Madeby: "India", Owner: "Provider-B", State: "Available", Price: 1.1},
+		Mask{Type: "FP2", Code: "id:2:AX96", Madeby: "India", Owner: "Provider-B", State: "Available", Price: 1.1},
+		Mask{Type: "FP1", Code: "id:2:AX97", Madeby: "India", Owner: "Provider-B", State: "Available", Price: 1.1},
+		Mask{Type: "FP2", Code: "id:3:AX98", Madeby: "China", Owner: "Provider-C", State: "Available", Price: 1.05},
+		Mask{Type: "FP3", Code: "id:3:AX99", Madeby: "China", Owner: "Provider-C", State: "Available", Price: 1.05},
+	}
+
+	for i, mask := range masks {
+		maskAsBytes, _ := json.Marshal(mask)
+		err := ctx.GetStub().PutState("id:"+strconv.Itoa(i), maskAsBytes)
+
+		if err != nil {
+			return fmt.Errorf("Failed to put mask in world state. %s", err.Error())
+		}
+	}
 
 	return nil
-	/*
-		masks := []Mask{
-			{Type: "FP2", Code: "A123", Madeby: "Spain", Owner: "Provider1"},
-			{Type: "FP2", Code: "B123", Madeby: "Germany", Owner: "Provider2"},
-			Type: "FP2", Code: "C123", Madeby: "Spain", Owner: "Provider3"}
-		}
-
-		for _, mask := range masks{
-			err := c.Set(ctx, mask.Type, mask.Code, mask.Madeby, mask.Owner)
-			if err != nil {
-				return nil
-			}
-		}
-	*/
 }
 
 // Create a new mask
-func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface, maskId string, typeM string, madeBy string, owner string, code string) error {
+func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface,
+	maskId string,
+	typeM string,
+	madeBy string,
+	owner string,
+	code string,
+	state string,
+	price float32) error {
 
 	// validate parameters if we dont want to update
 
@@ -62,9 +81,11 @@ func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface, 
 	if !exists {
 		mask := Mask{
 			Type:   typeM,
-			Code:   code,
+			Code:   maskId + ":" + code,
 			Madeby: madeBy,
 			Owner:  owner,
+			State:  state,
+			Price:  price,
 		}
 
 		maskAsBytes, err := json.Marshal(mask)
@@ -79,7 +100,14 @@ func (s *SmartContract) CreateMask(ctx contractapi.TransactionContextInterface, 
 }
 
 // Create a new mask
-func (s *SmartContract) UpdateMask(ctx contractapi.TransactionContextInterface, maskId string, typeM string, madeBy string, owner string, code string) error {
+func (s *SmartContract) UpdateMask(ctx contractapi.TransactionContextInterface,
+	maskId string,
+	typeM string,
+	madeBy string,
+	owner string,
+	code string,
+	state string,
+	price float32) error {
 
 	// validate parameters if we dont want to update
 
@@ -92,9 +120,11 @@ func (s *SmartContract) UpdateMask(ctx contractapi.TransactionContextInterface, 
 	if exists {
 		mask := Mask{
 			Type:   typeM,
-			Code:   code,
+			Code:   maskId + ":" + code,
 			Madeby: madeBy,
 			Owner:  owner,
+			State:  state,
+			Price:  price,
 		}
 
 		maskAsBytes, err := json.Marshal(mask)
@@ -157,36 +187,57 @@ func (s *SmartContract) MaskExists(ctx contractapi.TransactionContextInterface, 
 }
 
 // ChangeCarOwner updates the owner field of car with given id in world state
-func (s *SmartContract) ChangeMaskOwner(ctx contractapi.TransactionContextInterface, maskId string, newOwner string) (string, error) {
-	mask, err := s.GetMask(ctx, maskId)
+func (s *SmartContract) ChangeMaskOwner(ctx contractapi.TransactionContextInterface, maskId string, newOwner string) (bool, error) {
 
+	maskBytes, err := ctx.GetStub().GetState(maskId)
 	if err != nil {
-		return "error0", err
+		return false, fmt.Errorf("Failed to read Mask Info from world state: %v", err)
+	}
+
+	if maskBytes == nil {
+		return false, fmt.Errorf("The Mask object does not exist")
+	}
+
+	var mask Mask
+	err = json.Unmarshal(maskBytes, &mask)
+	if err != nil {
+		return false, err
 	}
 
 	txid := ctx.GetStub().GetTxID()
 
 	maskTx := MaskTx{
+		Code:      mask.Code,
 		TxId:      txid,
 		PrevOwner: mask.Owner,
 		NewOwner:  newOwner,
 		Timestamp: time.Now(),
 	}
-	txBytes, err := json.Marshal(maskTx)
-	if err != nil {
-		return "error2", err
-	}
 
 	mask.Owner = newOwner
-	maskAsBytes, err := json.Marshal(mask)
+
+	maskBytes, err = json.Marshal(mask)
 	if err != nil {
-		return "error1", err
+		return false, err
 	}
 
-	ctx.GetStub().PutState(maskId, maskAsBytes)
-	ctx.GetStub().PutState(txid, txBytes)
+	err = ctx.GetStub().PutState(maskId, maskBytes)
+	if err != nil {
+		return false, err
+	}
 
-	return txid, err
+	var txBytes []byte
+	txBytes, err = json.Marshal(maskTx)
+	if err != nil {
+		return false, err
+	}
+
+	err = ctx.GetStub().PutState(ctx.GetStub().GetTxID(), txBytes)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (s *SmartContract) GetAllMasks(ctx contractapi.TransactionContextInterface) ([]*Mask, error) {
